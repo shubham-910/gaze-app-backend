@@ -106,7 +106,7 @@ CORS_ALLOW_CREDENTIALS = True
 
 CSRF_TRUSTED_ORIGINS = env.list("CSRF_TRUSTED_ORIGINS", default=[])
 
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = False
 
 CORS_ALLOW_METHODS = [
     "GET",
@@ -121,6 +121,7 @@ CORS_ALLOW_HEADERS = [
     'authorization',
     'content-type',
     'x-requested-with',
+    'accept',
 ]   
 
 REST_FRAMEWORK = {
