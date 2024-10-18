@@ -122,7 +122,7 @@ def sendResetLink(request):
             token = token_generator.make_token(user)
 
             # Construct the reset URL (frontend URL)
-            reset_url = f"{settings.FRONTEND_URL}/reset-password/{user.id}/{token}"
+            reset_url = f"{settings.FRONTEND_URL}reset-password/{user.id}/{token}"
 
             # Send the reset link via email
             send_mail(
