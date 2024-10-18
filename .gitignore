@@ -1,0 +1,9 @@
+# .gitignore
+.env/
+venv/
+.venv/
+db.sqlite3
+*.sqlite3
+*.pyc
+__pycache__/
+backendmentalhealth/.env
