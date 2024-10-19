@@ -59,11 +59,15 @@ def handleLogin(request):
             if user is not None:
                 token, created = Token.objects.get_or_create(user=user)
                 
-                # Prepare the response data with token, user_id, and name
+                # Check if there is any entry in GadResponse for this user
+                is_filled = 1 if GadResponse.objects.filter(user=user).exists() else 0
+                
+                # Prepare the response data with token, user_id, name, and is_filled flag
                 response_data = {
                     'token': token.key,
                     'user_id': user.id,
                     'name': user.username,  # or user.name if your User model uses `name` field
+                    'is_filled': is_filled  # Send the is_filled flag
                 }
 
                 return HttpResponse(json.dumps(response_data), content_type="application/json", status=200)
@@ -126,8 +130,8 @@ def sendResetLink(request):
 
             # Send the reset link via email
             send_mail(
-                subject="Password Reset Request",
-                message=f"Click the link below to reset your password:\n{reset_url}",
+                subject="Password Reset Request from GazeTrack",
+                message=f"Click the link below to reset your password:  \n{reset_url}",
                 from_email=settings.EMAIL_HOST_USER,
                 recipient_list=[email],
                 fail_silently=False,
@@ -187,20 +191,20 @@ def gadForm(request):
         return HttpResponse({'message': 'Form submitted successfully!'}, status=201)
     return HttpResponse({'error': 'Invalid request method'}, status=405)
 
-@csrf_exempt
-def checkGadFormStatus(request):
-    if request.method == "POST":
-        try:
-            data = json.loads(request.body)
-            user_id = data.get('user_id')  # Use 'user_id' instead of 'storedUserId'
-            userData = GadResponse.objects.filter(user=user_id).exists()
-            # For now, just returning a dummy response for testing
-            if userData:
-                return JsonResponse({'status': 'success', 'form_filled': 1})  # Change '1' based on DB check
-            else:
-                return JsonResponse({'status': 'error', 'form_filled': 0})
+# @csrf_exempt
+# def checkGadFormStatus(request):
+#     if request.method == "POST":
+#         try:
+#             data = json.loads(request.body)
+#             user_id = data.get('user_id')  # Use 'user_id' instead of 'storedUserId'
+#             userData = GadResponse.objects.filter(user=user_id).exists()
+#             # For now, just returning a dummy response for testing
+#             if userData:
+#                 return JsonResponse({'status': 'success', 'form_filled': 1})  # Change '1' based on DB check
+#             else:
+#                 return JsonResponse({'status': 'error', 'form_filled': 0})
 
-        except Exception as e:
-            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+#         except Exception as e:
+#             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
+#     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
