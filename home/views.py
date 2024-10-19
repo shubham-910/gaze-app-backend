@@ -187,20 +187,20 @@ def gadForm(request):
         return HttpResponse({'message': 'Form submitted successfully!'}, status=201)
     return HttpResponse({'error': 'Invalid request method'}, status=405)
 
-# @csrf_exempt
-# def checkGadFormStatus(request):
-#     if request.method == "POST":
-#         # Parse the JSON data from the request body
-#         data = json.loads(request.body)
-#         user_id = data.get('user_id')
+@csrf_exempt
+def checkGadFormStatus(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            user_id = data.get('user_id')  # Use 'user_id' instead of 'storedUserId'
+            userData = GadResponse.objects.filter(user=user_id).exists()
+            # For now, just returning a dummy response for testing
+            if userData:
+                return JsonResponse({'status': 'success', 'form_filled': 1})  # Change '1' based on DB check
+            else:
+                return JsonResponse({'status': 'error', 'form_filled': 0})
 
-#         if not user_id:
-#             return JsonResponse({'error': 'User ID is required'}, status=400)
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
 
-#         userDatacheck = GadResponse.objects.filter(user_id=user_id)
-#         if userDatacheck.exists():
-#             return JsonResponse({"success": "GAD form data found"}, status=200)
-#         else:
-#             return JsonResponse({"error": "No GAD form data found"}, status=404)
-
-#     return JsonResponse({'error': 'Invalid request method'}, status=405)
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
