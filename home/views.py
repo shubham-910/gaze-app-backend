@@ -126,7 +126,7 @@ def sendResetLink(request):
             token = token_generator.make_token(user)
 
             # Construct the reset URL (frontend URL)
-            reset_url = f"{settings.FRONTEND_URL}reset-password/{user.id}/{token}"
+            reset_url = f"{settings.FRONTEND_URL}/reset-password/{user.id}/{token}"
 
             # Send the reset link via email
             send_mail(
@@ -191,20 +191,57 @@ def gadForm(request):
         return HttpResponse({'message': 'Form submitted successfully!'}, status=201)
     return HttpResponse({'error': 'Invalid request method'}, status=405)
 
-# @csrf_exempt
-# def checkGadFormStatus(request):
-#     if request.method == "POST":
-#         try:
-#             data = json.loads(request.body)
-#             user_id = data.get('user_id')  # Use 'user_id' instead of 'storedUserId'
-#             userData = GadResponse.objects.filter(user=user_id).exists()
-#             # For now, just returning a dummy response for testing
-#             if userData:
-#                 return JsonResponse({'status': 'success', 'form_filled': 1})  # Change '1' based on DB check
-#             else:
-#                 return JsonResponse({'status': 'error', 'form_filled': 0})
+@csrf_exempt
+def getUserProfile(request):
+    if request.method == "GET":
+        # Extract userId from query parameters
+        userId = request.GET.get('userId')
+        
+        # Check if userId is provided
+        if not userId:
+            return JsonResponse({'error': 'userId is required'}, status=400)
 
-#         except Exception as e:
-#             return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+        try:
+            # Retrieve user by ID
+            user = User.objects.get(id=userId)
+            userData = {
+                'username': user.username,
+                'email': user.email,
+                'status': user.is_active,
+                'datejoined': user.date_joined.strftime('%Y-%m-%d'),
+            }
+            return JsonResponse(userData, status=200)
 
-#     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
+        except User.DoesNotExist:
+            return JsonResponse({"error": "User with this ID does not exist."}, status=400)
+
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
+
+@csrf_exempt
+def updateUserProfile(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            userId = data.get('userId')
+            username = data.get('username')
+            email = data.get('email')
+            
+            # Ensure that required fields are provided
+            if not userId or not username or not email:
+                return JsonResponse({'error': 'userId, username, and email are required.'}, status=400)
+
+            # Retrieve the user by ID
+            user = User.objects.get(id=userId)
+            user.username = username
+            user.email = email
+            user.save()
+
+            # Return a success response
+            return JsonResponse({'message': 'Profile updated successfully'}, status=200)
+
+        except User.DoesNotExist:
+            return JsonResponse({'error': 'User not found.'}, status=404)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    
+    return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)

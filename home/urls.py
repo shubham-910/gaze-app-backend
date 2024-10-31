@@ -8,5 +8,6 @@ urlpatterns = [
     path('sendresetlink/', views.sendResetLink, name='sendResetLink'),
     path('resetPassword/<int:user_id>/<str:token>/', views.resetPassword, name='resetPassword'),
     path('gadform/', views.gadForm, name='gadForm'),
-    # path('gadcheck/', views.checkGadFormStatus,  name='checkGadFormStatus'),
+    path('getuser/', views.getUserProfile,  name='getUserProfile'),
+    path('updateuser/', views.updateUserProfile,  name='updateUserProfile'),
 ]
