@@ -11,11 +11,16 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.decorators import api_view
 import json
-from .models import GadResponse
+from .models import GadResponse, PredictionData
 from django.utils import timezone
 from django.http import JsonResponse
-from django.utils.timezone import now
 from django.core.serializers import serialize
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+from pathlib import Path
 
 @csrf_exempt
 def handleRegister(request):
@@ -245,3 +250,84 @@ def updateUserProfile(request):
             return JsonResponse({'error': 'Invalid JSON data'}, status=400)
     
     return JsonResponse({'status': 'error', 'message': 'Invalid request method'}, status=405)
+
+gazeFile =  Path(__file__).resolve().parent / 'public' / 'GazeCoordinates.csv'
+df = pd.read_csv(gazeFile)
+x_coords = df['x']
+labels = np.where(x_coords < 960, 0, 1)  # 0 = left, 1 = right
+
+# Prepare the data for model training
+X = x_coords.values.reshape(-1, 1)
+y = labels
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Train the model
+model = LogisticRegression()
+model.fit(X_train, y_train)
+
+@csrf_exempt
+def predictView(request):
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            xValue = data['x']
+
+            predictions = model.predict(X_test)
+            accuracy = accuracy_score(y_test, predictions)
+            # print(f"Model Accuracy: {accuracy * 100:.2f}%")
+
+            x_values = np.array(xValue).reshape(-1, 1)
+            side = model.predict(x_values)
+
+            # Count left and right occurrences
+            left_count = (side == 0).sum()
+            right_count = (side == 1).sum()
+
+            # Determine final majority
+            majority_side = "Left" if left_count>right_count else "Right"
+
+            # "predictions": ["Left" if pred == 0 else "Right" for pred in side],
+            
+            response = {
+                "left_count": int(left_count),
+                "right_count": int(right_count),
+                "final_prediction": majority_side,
+                "test_date": timezone.now()
+            }
+
+            insertData = PredictionData.objects.create(
+            user_id= data.get('user_id'),  # Ensure user is correctly set
+            category_number=data.get('category_number'),
+            left_count=response['left_count'],
+            right_count=response['right_count'],
+            final_prediction=response['final_prediction'],
+            test_date = response['test_date'],
+            )
+            insertData.save()
+
+            return JsonResponse(response)
+
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
+
+    return JsonResponse({"error": "Only POST method is allowed"}, status=405)
+
+
+@csrf_exempt
+def getUserGazeData(request):
+    if request.method == 'GET':
+        userId = request.GET.get('userId')
+        
+        if not userId:
+            return JsonResponse({'error': 'user id is required'}, status=400)
+
+        try:
+            userGraphData = PredictionData.objects.filter(user_id=userId)
+            data_list = list(userGraphData.values())
+            return JsonResponse(data_list, safe=False)
+
+        except json.JSONDecodeError:
+            return JsonResponse({"status":"error","message":"Invalid format type."})
+    
+    return JsonResponse({"error": "Only GET method is allowed"}, status=405)
+

@@ -15,3 +15,10 @@ class GadResponse(models.Model):
     is_filled = models.IntegerField(default=0)
     submitted_at = models.DateTimeField(default=timezone.now)
 
+class PredictionData(models.Model):
+    category_number = models.IntegerField()
+    left_count = models.IntegerField()
+    right_count = models.IntegerField()
+    final_prediction = models.CharField()
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    test_date = models.DateTimeField(default=timezone.now)

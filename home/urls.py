@@ -10,4 +10,6 @@ urlpatterns = [
     path('gadform/', views.gadForm, name='gadForm'),
     path('getuser/', views.getUserProfile,  name='getUserProfile'),
     path('updateuser/', views.updateUserProfile,  name='updateUserProfile'),
+    path('prediction/', views.predictView,  name='predictView'),
+    path('getpredict/', views.getUserGazeData,  name='getUserGazeData'),
 ]
