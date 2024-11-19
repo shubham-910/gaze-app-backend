@@ -22,3 +22,12 @@ class PredictionData(models.Model):
     final_prediction = models.CharField()
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     test_date = models.DateTimeField(default=timezone.now)
+
+
+class CategoryData(models.Model):
+    category_number = models.IntegerField()
+    category_name = models.CharField()
+    is_positive = models.IntegerField()
+    image_metadata = models.CharField()
+    # user = models.ForeignKey(User, on_delete=models.CASCADE)
+    image_description = models.CharField()

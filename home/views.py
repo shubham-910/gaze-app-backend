@@ -330,4 +330,3 @@ def getUserGazeData(request):
             return JsonResponse({"status":"error","message":"Invalid format type."})
     
     return JsonResponse({"error": "Only GET method is allowed"}, status=405)
-
