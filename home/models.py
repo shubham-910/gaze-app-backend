@@ -15,6 +15,7 @@ class GadResponse(models.Model):
     is_filled = models.IntegerField(default=0)
     submitted_at = models.DateTimeField(default=timezone.now)
 
+
 class PredictionData(models.Model):
     category_number = models.IntegerField()
     left_count = models.IntegerField()
@@ -22,6 +23,7 @@ class PredictionData(models.Model):
     final_prediction = models.CharField()
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     test_date = models.DateTimeField(default=timezone.now)
+    # result_data = models.CharField(max_length=500, default='Not specified') 
 
 
 class CategoryData(models.Model):
@@ -31,3 +33,5 @@ class CategoryData(models.Model):
     image_metadata = models.CharField()
     # user = models.ForeignKey(User, on_delete=models.CASCADE)
     image_description = models.CharField()
+
+
