@@ -1,3 +1,5 @@
+from ast import literal_eval
+import re
 from django.shortcuts import HttpResponse, redirect
 from django.contrib.auth.models import User
 from django.views.decorators.csrf import csrf_exempt
@@ -9,7 +11,7 @@ from django.conf import settings
 from rest_framework.response import Response
 from rest_framework import status
 import json
-from .models import GadResponse, PredictionData, CategoryData
+from .models import GadResponse, LLMResponse, PredictionData, CategoryData
 from django.utils import timezone
 from django.http import JsonResponse
 import numpy as np
@@ -19,6 +21,11 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 from pathlib import Path
 import random
+import requests
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
 
 @csrf_exempt
 def handleRegister(request):
@@ -189,8 +196,6 @@ def resetPassword(request, user_id, token):
 
             try:
                 user = User.objects.get(id=user_id)
-                print("email:")
-                print(user.email)
             except User.DoesNotExist:
                 return HttpResponse({"error": "User not found."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -230,23 +235,71 @@ def resetPassword(request, user_id, token):
 def gadForm(request):
     if request.method == 'POST':
         data = json.loads(request.body)
+
+        # Ensure all question values are converted to integers
+        total_score = (
+            int(data.get('question_1', 0)) +
+            int(data.get('question_2', 0)) +
+            int(data.get('question_3', 0)) +
+            int(data.get('question_4', 0)) +
+            int(data.get('question_5', 0)) +
+            int(data.get('question_6', 0)) +
+            int(data.get('question_7', 0))
+        )
+
         response = GadResponse.objects.create(
-            user_id= data.get('user_id'),  # Ensure user is correctly set
-            question_1=data.get('question_1'),
-            question_2=data.get('question_2'),
-            question_3=data.get('question_3'),
-            question_4=data.get('question_4'),
-            question_5=data.get('question_5'),
-            question_6=data.get('question_6'),
-            question_7=data.get('question_7'),
+            user_id=data.get('user_id'),
+            question_1=int(data.get('question_1', 0)),
+            question_2=int(data.get('question_2', 0)),
+            question_3=int(data.get('question_3', 0)),
+            question_4=int(data.get('question_4', 0)),
+            question_5=int(data.get('question_5', 0)),
+            question_6=int(data.get('question_6', 0)),
+            question_7=int(data.get('question_7', 0)),
             difficulty=data.get('difficulty'),
-            is_filled = data.get('is_filled'),
+            is_filled=data.get('is_filled'),
+            total_score=total_score,
             submitted_at=timezone.now()
         )
         response.save()
-        return HttpResponse({'message': 'Form submitted successfully!'}, status=201)
-    return HttpResponse({'error': 'Invalid request method'}, status=405)
 
+        return JsonResponse({'message': 'Form submitted successfully!', 'total_score': total_score}, status=201)
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
+
+
+@csrf_exempt
+def updateGadForm(request, user_id):
+    if request.method == 'PUT':
+        try:
+            data = json.loads(request.body)
+            response = GadResponse.objects.get(user_id=user_id)
+
+            # Update the form fields with integer conversion
+            response.question_1 = int(data.get('question_1', response.question_1) or 0)
+            response.question_2 = int(data.get('question_2', response.question_2) or 0)
+            response.question_3 = int(data.get('question_3', response.question_3) or 0)
+            response.question_4 = int(data.get('question_4', response.question_4) or 0)
+            response.question_5 = int(data.get('question_5', response.question_5) or 0)
+            response.question_6 = int(data.get('question_6', response.question_6) or 0)
+            response.question_7 = int(data.get('question_7', response.question_7) or 0)
+            response.difficulty = data.get('difficulty', response.difficulty)
+
+            # Calculate updated total score
+            response.total_score = (
+                response.question_1 + response.question_2 + response.question_3 +
+                response.question_4 + response.question_5 + response.question_6 +
+                response.question_7
+            )
+            response.save()
+
+            return JsonResponse({'message': 'Form updated successfully!', 'total_score': response.total_score}, status=200)
+
+        except GadResponse.DoesNotExist:
+            return JsonResponse({'error': 'Form not found for this user'}, status=404)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=400)
+        
+    return JsonResponse({'error': 'Invalid request method'}, status=405)
 
 @csrf_exempt
 def getGadResponse(request, user_id):
@@ -263,6 +316,7 @@ def getGadResponse(request, user_id):
                 "question_6": gad_response.question_6,
                 "question_7": gad_response.question_7,
                 "difficulty": gad_response.difficulty,
+                "total_score": gad_response.total_score,
             })
         except GadResponse.DoesNotExist:
             return JsonResponse({"error": "No GAD response found for the user."}, status=404)
@@ -379,12 +433,117 @@ def predictView(request):
             insertData.save()
             response['id'] = insertData.id
 
+            llm_respone = generatePersuasiveContent(
+                user_id = data.get('user_id'),
+                prediction_id=insertData.id,
+                negative_gaze=response['left_count'],
+                positive_gaze=response['right_count'],
+                prediction=response['final_prediction'],
+                anxiety_level=data.get('anxiety_level'),
+            )
+
+            if llm_respone["status"] == "success":
+                response["techniques"] = llm_respone["techniques"]
+                response["next_steps"] = llm_respone["next_steps"]
+
             return JsonResponse(response)
 
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
 
     return JsonResponse({"error": "Only POST method is allowed"}, status=405)
+
+
+def generatePersuasiveContent(user_id, prediction_id, negative_gaze, positive_gaze, prediction, anxiety_level):
+    try:
+        # Construct the LLM prompt
+        prompt = (
+            f"User's gaze data shows a {prediction} focus, with {negative_gaze} negative gaze points and {positive_gaze} positive gaze points, "
+            f"and an anxiety level of {anxiety_level}.\n"
+            "Generate actionable guidance with TWO clearly labeled sections on persuasive techniques to improve mental health:\n\n"
+            "1. **Techniques to Enhance Positivity**:\n"
+            "- Provide 2 actionable persuasive techniques in concise, practical sentences.\n\n"
+            "2. **Next Steps for the User**:\n"
+            "- Provide 2 simple next steps on persuasive techniques in bullet points, using clear and concise language.\n"
+            "Write only the response content in a friendly and approachable tone, without echoing this instruction or examples."
+        )
+
+        # Hugging Face API request
+        token = os.getenv("GEN_AI_TOKEN")
+        response = requests.post(
+            os.getenv("GEN_AI_URL"),
+            headers={"Authorization": f"Bearer {token}"},
+              json={
+                    "inputs": prompt,
+                    "parameters": {
+                        "max_new_tokens": 300,  # Increase the limit to generate longer responses
+                        "temperature": 0.7,     # Set creativity level
+                        "top_p": 0.9            # Enable nucleus sampling for diverse results
+                    },
+                },
+        )
+
+        if response.status_code == 200:
+            response_data = response.json()
+            generated_text = ""
+
+            # Parse the response
+            if isinstance(response_data, list) and response_data and 'generated_text' in response_data[0]:
+                generated_text = response_data[0]['generated_text']
+
+            # Extract Techniques and Next Steps
+            techniques = []
+            next_steps = []
+
+            try:
+                if generated_text:
+                    techniques_match = re.search(
+                        r"Techniques to Enhance Positivity:\n([\s\S]*?)(?=\n\n|Next Steps for the User:)",
+                        generated_text
+                    )
+                    next_steps_match = re.search(
+                        r"Next Steps for the User:\n([\s\S]*?)(?=\n\n|$)",
+                        generated_text
+                    )
+
+                    techniques = (
+                        techniques_match.group(1).strip().split("\n- ")
+                        if techniques_match else []
+                    )
+                    next_steps = (
+                        next_steps_match.group(1).strip().split("\n- ")
+                        if next_steps_match else []
+                    )
+            except Exception as e:
+                print(f"Error extracting techniques or next steps: {e}")
+
+            # print("Extracted Techniques:", techniques)
+            # print("Extracted Next Steps:", next_steps)
+
+            # Save the LLM response to the database
+            LLMResponse.objects.create(
+                user_id=user_id,
+                prediction_test_id=prediction_id,
+                response_llm=response_data,
+                techniques = techniques,
+                next_steps = next_steps
+            )
+
+            # Return the processed response
+            return {
+                "status": "success",
+                "llm_response": response_data,
+                "techniques": techniques,
+                "next_steps": next_steps,
+            }
+        else:
+            # print("LLM API Error Response:", response.text)
+            return {"status": "error", "details": response.text}
+
+    except Exception as e:
+        # print("Error in generatePersuasiveContent:", str(e))
+        return {"status": "error", "details": str(e)}
+
 
 
 @csrf_exempt
@@ -397,36 +556,72 @@ def getUserGazeData(request):
 
         try:
             userGraphData = PredictionData.objects.filter(user_id=userId)
-            data_list = list(userGraphData.values())
+
+            data_list = []
+            for prediction in userGraphData:
+                llm_responses = prediction.llm_responses.all()  # Access related LLMResponse objects
+
+                # print('llm response:  ', llm_responses)
+                for response in llm_responses:
+                    # Parse response_llm
+                    llm_text = response.response_llm
+                    # print("llm text:   ", llm_text)
+
+                    techniques, next_steps = [], []  # Default values
+
+                    try:
+                        # Convert response_llm string to a usable format
+                        llm_dict = literal_eval(llm_text) if isinstance(llm_text, str) else llm_text
+
+                        # Access 'generated_text' if it exists
+                        if isinstance(llm_dict, list) and llm_dict and 'generated_text' in llm_dict[0]:
+                            generated_text = llm_dict[0]['generated_text']
+
+                            # Extract Techniques and Next Steps
+                            techniques_match = re.search(
+                                r"Techniques to Enhance Positivity:\n([\s\S]*?)(?=\n\n|Next Steps for the User:)",
+                                generated_text
+                            )
+                            next_steps_match = re.search(
+                                r"Next Steps for the User:\n([\s\S]*?)(?=\n\n|$)",
+                                generated_text
+                            )
+                            
+                            techniques = (
+                                techniques_match.group(1).strip().split("\n- ")
+                                if techniques_match else []
+                            )
+                            next_steps = (
+                                next_steps_match.group(1).strip().split("\n- ")
+                                if next_steps_match else []
+                            )
+
+                    except Exception as e:
+                        print("Error parsing llm_text:", e)
+
+                    # print("techniques:   ", techniques)
+                    # print("next steps:   ", next_steps)
+                    data_list.append({
+                        "prediction_id": prediction.id,
+                        "category_number": prediction.category_number,
+                        "left_count": prediction.left_count,
+                        "right_count": prediction.right_count,
+                        "final_prediction": prediction.final_prediction,
+                        "test_date": prediction.test_date,
+                        "llm_response_id": response.id,
+                        "response_llm": llm_text,
+                        "techniques": techniques,  # Parsed techniques
+                        "next_steps": next_steps,  # Parsed next steps
+                        "llm_created_at": response.created_at,
+                    })
+
             return JsonResponse(data_list, safe=False)
 
-        except json.JSONDecodeError:
-            return JsonResponse({"status":"error","message":"Invalid format type."})
+        except Exception as e:
+            print("Error in getUserGazeData:", e)
+            return JsonResponse({"status": "error", "message": str(e)})
     
     return JsonResponse({"error": "Only GET method is allowed"}, status=405)
-
-# @csrf_exempt
-# def updatePrediction(request, prediction_id):
-#     if request.method == 'PATCH':
-#         try:
-#             data = json.loads(request.body)
-#             result_data = data.get('result_data')
-
-#             if not result_data:
-#                 return JsonResponse({"error": "result_data is required"}, status=400)
-
-#             # Update the specific record
-#             prediction = PredictionData.objects.get(id=prediction_id)
-#             prediction.result_data = result_data
-#             prediction.save()
-
-#             return JsonResponse({"status": "success", "message": "Result data updated successfully."})
-#         except PredictionData.DoesNotExist:
-#             return JsonResponse({"error": "Prediction not found"}, status=404)
-#         except Exception as e:
-#             return JsonResponse({"error": str(e)}, status=400)
-
-#     return JsonResponse({"error": "Only PATCH method is allowed"}, status=405)
 
 
 @csrf_exempt
@@ -566,3 +761,22 @@ def getCategoryPhotos(request):
 
     else:
         return JsonResponse({"error": "Only GET method is allowed."}, status=405)
+
+
+
+
+# def extract_sections(llm_output):
+#     """
+#     Extracts the 'Techniques to Enhance Positivity' and 'Next Steps for the User' from the LLM output.
+#     """
+#     import re
+
+#     # Extract 'Techniques to Enhance Positivity'
+#     techniques_match = re.search(r"Techniques to Enhance Positivity:\n(.+?)(?=\n\n|\Z)", llm_output, re.S)
+#     techniques = techniques_match.group(1).strip() if techniques_match else "No techniques found."
+
+#     # Extract 'Next Steps for the User'
+#     next_steps_match = re.search(r"Next Steps for the User:\n(.+?)(?=\n\n|\Z)", llm_output, re.S)
+#     next_steps = next_steps_match.group(1).strip() if next_steps_match else "No next steps found."
+
+#     return techniques, next_steps

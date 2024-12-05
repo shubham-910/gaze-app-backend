@@ -14,6 +14,7 @@ class GadResponse(models.Model):
     difficulty = models.CharField(max_length=50, default='Not specified')  # Add default value here
     is_filled = models.IntegerField(default=0)
     submitted_at = models.DateTimeField(default=timezone.now)
+    total_score = models.IntegerField(default=0)  # New field for score
 
 
 class PredictionData(models.Model):
@@ -35,3 +36,15 @@ class CategoryData(models.Model):
     image_description = models.CharField()
 
 
+class LLMResponse(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    response_llm = models.TextField()
+    techniques = models.TextField()
+    next_steps = models.TextField()
+    prediction_test = models.ForeignKey(
+        'PredictionData', on_delete=models.CASCADE, related_name="llm_responses"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)  # Timestamp for when the record was created
+
+    def __str__(self):
+        return f"LLM Response for User {self.user.id} and Prediction {self.prediction_test.id}"
