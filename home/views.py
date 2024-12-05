@@ -442,7 +442,9 @@ def predictView(request):
                 anxiety_level=data.get('anxiety_level'),
             )
 
+            print("llm response:  ", llm_respone)
             if llm_respone["status"] == "success":
+                response["llm_response"] = llm_respone["llm_response"]
                 response["techniques"] = llm_respone["techniques"]
                 response["next_steps"] = llm_respone["next_steps"]
 
@@ -517,8 +519,8 @@ def generatePersuasiveContent(user_id, prediction_id, negative_gaze, positive_ga
             except Exception as e:
                 print(f"Error extracting techniques or next steps: {e}")
 
-            # print("Extracted Techniques:", techniques)
-            # print("Extracted Next Steps:", next_steps)
+            print("Extracted Techniques:", techniques)
+            print("Extracted Next Steps:", next_steps)
 
             # Save the LLM response to the database
             LLMResponse.objects.create(
