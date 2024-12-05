@@ -472,6 +472,8 @@ def generatePersuasiveContent(user_id, prediction_id, negative_gaze, positive_ga
 
         # Hugging Face API request
         token = os.getenv("GEN_AI_TOKEN")
+        print(token)
+        print("AI URL:  ", os.getenv("GEN_AI_URL"))
         response = requests.post(
             os.getenv("GEN_AI_URL"),
             headers={"Authorization": f"Bearer {token}"},
@@ -485,6 +487,7 @@ def generatePersuasiveContent(user_id, prediction_id, negative_gaze, positive_ga
                 },
         )
 
+        print("response from llm:   ", response)
         if response.status_code == 200:
             response_data = response.json()
             generated_text = ""
