@@ -17,5 +17,5 @@ urlpatterns = [
     # path('updateresult/<int:prediction_id>/', views.updatePrediction,  name='updatePrediction'),
     path('addstimuli/', views.addCategory,  name='addCategoty'),
     path('getstimulis/', views.getCategoryPhotos,  name='getCategoryPhotos'),
-    # path('generate/', views.generatePersuasiveContent,  name='generatePersuasiveContent'),|
+    path('generate/', views.generatePersuasiveContent,  name='generatePersuasiveContent'),
 ]

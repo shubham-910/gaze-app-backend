@@ -433,21 +433,6 @@ def predictView(request):
             insertData.save()
             response['id'] = insertData.id
 
-            llm_respone = generatePersuasiveContent(
-                user_id = data.get('user_id'),
-                prediction_id=insertData.id,
-                negative_gaze=response['left_count'],
-                positive_gaze=response['right_count'],
-                prediction=response['final_prediction'],
-                anxiety_level=data.get('anxiety_level'),
-            )
-
-            print("llm response:  ", llm_respone)
-            if llm_respone["status"] == "success":
-                response["llm_response"] = llm_respone["llm_response"]
-                response["techniques"] = llm_respone["techniques"]
-                response["next_steps"] = llm_respone["next_steps"]
-
             return JsonResponse(response)
 
         except Exception as e:
@@ -455,99 +440,124 @@ def predictView(request):
 
     return JsonResponse({"error": "Only POST method is allowed"}, status=405)
 
+@csrf_exempt
+def generatePersuasiveContent(request):
+    if request.method == "POST":
+        try:
+            # Parse the incoming request data
+            data = json.loads(request.body)
+            user_id = data.get("user_id")
+            prediction_id = data.get("prediction_id")
+            llm_response = data.get("llm_response")
 
-def generatePersuasiveContent(user_id, prediction_id, negative_gaze, positive_gaze, prediction, anxiety_level):
-    try:
-        # Construct the LLM prompt
-        prompt = (
-            f"User's gaze data shows a {prediction} focus, with {negative_gaze} negative gaze points and {positive_gaze} positive gaze points, "
-            f"and an anxiety level of {anxiety_level}.\n"
-            "Generate actionable guidance with TWO clearly labeled sections on persuasive techniques to improve mental health:\n\n"
-            "1. **Techniques to Enhance Positivity**:\n"
-            "- Provide 2 actionable persuasive techniques in concise, practical sentences.\n\n"
-            "2. **Next Steps for the User**:\n"
-            "- Provide 2 simple next steps on persuasive techniques in bullet points, using clear and concise language.\n"
-            "Write only the response content in a friendly and approachable tone, without echoing this instruction or examples."
-        )
+            if not llm_response:
+                return JsonResponse({"error": "LLM response is missing"}, status=400)
 
-        # Hugging Face API request
-        token = os.getenv("GEN_AI_TOKEN")
-        print(token)
-        print("AI URL:  ", os.getenv("GEN_AI_URL"))
-        response = requests.post(
-            os.getenv("GEN_AI_URL"),
-            headers={"Authorization": f"Bearer {token}"},
-              json={
-                    "inputs": prompt,
-                    "parameters": {
-                        "max_new_tokens": 300,  # Increase the limit to generate longer responses
-                        "temperature": 0.7,     # Set creativity level
-                        "top_p": 0.9            # Enable nucleus sampling for diverse results
-                    },
-                },
-        )
-
-        print("response from llm:   ", response)
-        if response.status_code == 200:
-            response_data = response.json()
+            # Convert response_llm string to a usable format
             generated_text = ""
+            try:
+                llm_dict = literal_eval(llm_response) if isinstance(llm_response, str) else llm_response
 
-            # Parse the response
-            if isinstance(response_data, list) and response_data and 'generated_text' in response_data[0]:
-                generated_text = response_data[0]['generated_text']
+                # Access 'generated_text' if it exists
+                if isinstance(llm_dict, list) and llm_dict and "generated_text" in llm_dict[0]:
+                    generated_text = llm_dict[0]["generated_text"]
+            except Exception as e:
+                return JsonResponse({"error": f"Error parsing LLM response: {str(e)}"}, status=400)
+
+            if not generated_text:
+                return JsonResponse({"error": "Generated text is missing from LLM response"}, status=400)
 
             # Extract Techniques and Next Steps
-            techniques = []
-            next_steps = []
+            techniques, next_steps = [], []
 
             try:
-                if generated_text:
-                    techniques_match = re.search(
-                        r"Techniques to Enhance Positivity:\n([\s\S]*?)(?=\n\n|Next Steps for the User:)",
-                        generated_text
-                    )
-                    next_steps_match = re.search(
-                        r"Next Steps for the User:\n([\s\S]*?)(?=\n\n|$)",
-                        generated_text
-                    )
+                LAST_PROMPT_LINE = "Write only the response content in a friendly and approachable tone, without echoing this instruction or examples."
 
-                    techniques = (
-                        techniques_match.group(1).strip().split("\n- ")
-                        if techniques_match else []
-                    )
-                    next_steps = (
-                        next_steps_match.group(1).strip().split("\n- ")
-                        if next_steps_match else []
-                    )
+                # Locate the position of the last line
+                split_index = generated_text.find(LAST_PROMPT_LINE)
+                if split_index != -1:
+                    # Extract only the content after the last line of the prompt
+                    generated_content = generated_text[split_index + len(LAST_PROMPT_LINE):].strip()
+                else:
+                    return JsonResponse({"error": "Prompt delimiter not found in generated text"}, status=400)
+
+                # Debugging: print the extracted generated content
+                print("Generated Content After Split:", generated_content)
+
+                # Default fallback values
+                DEFAULT_TECHNIQUES = (
+                    "Practice deep breathing exercises to calm your mind. Focus on taking slow, deep breaths for 5 minutes daily.\n"
+                    "Engage in positive self-talk to counteract negative thoughts. Remind yourself of your strengths and past successes."
+                )
+                DEFAULT_NEXT_STEPS = (
+                    "Set aside 10 minutes daily to practice mindfulness or meditation.\n"
+                    "Write down three positive things about your day before going to bed each night."
+                )
+
+                # Match Techniques to Enhance Positivity
+                # techniques_match = re.search(
+                #     r"\*\*Techniques to Enhance Positivity\*\*\s*:?\s*\n([\s\S]*?)(?=\n\n|\*\*Next Steps for the User\*\*)", 
+                #     generated_content
+                # )
+
+                # Match Next Steps for the User
+                # next_steps_match = re.search(
+                #     r"\*\*Next Steps for the User\*\*\s*:?\s*\n([\s\S]*?)(?=\n\n|$)", 
+                #     generated_content
+                # )
+
+
+                techniques_match = re.search(
+                    r"\*\*Techniques to Enhance Positivity\*\*\s*:?\s*\n([\s\S]*?)(?=\n\*\*Next Steps for the User\*\*)", 
+                    generated_content
+                )
+
+                next_steps_match = re.search(
+                    r"\*\*Next Steps for the User\*\*\s*:?\s*\n([\s\S]*?)(?=\n|$)", 
+                    generated_content
+                )
+
+                print("technique match:  ", techniques_match)
+                print("next step match:  ", next_steps_match)
+
+                techniques = techniques_match.group(1).strip() if techniques_match else DEFAULT_TECHNIQUES
+                next_steps = next_steps_match.group(1).strip() if next_steps_match else DEFAULT_NEXT_STEPS
+                # Parse the matches into lists
+                # techniques = [
+                #     tech.strip("-• ").strip() for tech in (techniques_match.group(1).splitlines() if techniques_match else []) if tech.strip()
+                # ]
+                # next_steps = [
+                #     step.strip("-• ").strip() for step in (next_steps_match.group(1).splitlines() if next_steps_match else []) if step.strip()
+                # ]
+
+                # Debugging: print the extracted techniques and next steps
+                print("Extracted Techniques:", techniques)
+                print("Extracted Next Steps:", next_steps)
+
+                # Save to the database or return the result
+                llm_entry = LLMResponse.objects.create(
+                    user_id=user_id,
+                    prediction_test_id=prediction_id,
+                    response_llm=llm_response,
+                    techniques=techniques,
+                    next_steps=next_steps
+                )
+                llm_entry.save()
+
+                return JsonResponse({
+                    "status": "success",
+                    "techniques": techniques,
+                    "next_steps": next_steps,
+                })
+
             except Exception as e:
-                print(f"Error extracting techniques or next steps: {e}")
+                return JsonResponse({"error": str(e)}, status=400)
 
-            print("Extracted Techniques:", techniques)
-            print("Extracted Next Steps:", next_steps)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=400)
 
-            # Save the LLM response to the database
-            LLMResponse.objects.create(
-                user_id=user_id,
-                prediction_test_id=prediction_id,
-                response_llm=response_data,
-                techniques = techniques,
-                next_steps = next_steps
-            )
+    return JsonResponse({"error": "Only POST method is allowed"}, status=405)
 
-            # Return the processed response
-            return {
-                "status": "success",
-                "llm_response": response_data,
-                "techniques": techniques,
-                "next_steps": next_steps,
-            }
-        else:
-            # print("LLM API Error Response:", response.text)
-            return {"status": "error", "details": response.text}
-
-    except Exception as e:
-        # print("Error in generatePersuasiveContent:", str(e))
-        return {"status": "error", "details": str(e)}
 
 
 
