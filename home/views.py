@@ -450,6 +450,8 @@ def generatePersuasiveContent(request):
             prediction_id = data.get("prediction_id")
             llm_response = data.get("llm_response")
 
+            llm_fetch_data = llm_response[0]['generated_text']
+
             if not llm_response:
                 return JsonResponse({"error": "LLM response is missing"}, status=400)
 
@@ -538,7 +540,7 @@ def generatePersuasiveContent(request):
                 llm_entry = LLMResponse.objects.create(
                     user_id=user_id,
                     prediction_test_id=prediction_id,
-                    response_llm=llm_response,
+                    response_llm=llm_fetch_data,
                     techniques=techniques,
                     next_steps=next_steps
                 )
@@ -546,6 +548,7 @@ def generatePersuasiveContent(request):
 
                 return JsonResponse({
                     "status": "success",
+                    "llm_fetch_response": llm_fetch_data,
                     "techniques": techniques,
                     "next_steps": next_steps,
                 })
@@ -579,40 +582,41 @@ def getUserGazeData(request):
                 # print('llm response:  ', llm_responses)
                 for response in llm_responses:
                     # Parse response_llm
+                    # llm_text = response.response_llm
                     llm_text = response.response_llm
                     # print("llm text:   ", llm_text)
 
-                    techniques, next_steps = [], []  # Default values
+                    # techniques, next_steps = [], []  # Default values
 
-                    try:
-                        # Convert response_llm string to a usable format
-                        llm_dict = literal_eval(llm_text) if isinstance(llm_text, str) else llm_text
+                    # try:
+                    #     # Convert response_llm string to a usable format
+                    #     llm_dict = literal_eval(llm_text) if isinstance(llm_text, str) else llm_text
 
-                        # Access 'generated_text' if it exists
-                        if isinstance(llm_dict, list) and llm_dict and 'generated_text' in llm_dict[0]:
-                            generated_text = llm_dict[0]['generated_text']
+                    #     # Access 'generated_text' if it exists
+                    #     if isinstance(llm_dict, list) and llm_dict and 'generated_text' in llm_dict[0]:
+                    #         generated_text = llm_dict[0]['generated_text']
 
-                            # Extract Techniques and Next Steps
-                            techniques_match = re.search(
-                                r"Techniques to Enhance Positivity:\n([\s\S]*?)(?=\n\n|Next Steps for the User:)",
-                                generated_text
-                            )
-                            next_steps_match = re.search(
-                                r"Next Steps for the User:\n([\s\S]*?)(?=\n\n|$)",
-                                generated_text
-                            )
+                    #         # Extract Techniques and Next Steps
+                    #         techniques_match = re.search(
+                    #             r"Techniques to Enhance Positivity:\n([\s\S]*?)(?=\n\n|Next Steps for the User:)",
+                    #             generated_text
+                    #         )
+                    #         next_steps_match = re.search(
+                    #             r"Next Steps for the User:\n([\s\S]*?)(?=\n\n|$)",
+                    #             generated_text
+                    #         )
                             
-                            techniques = (
-                                techniques_match.group(1).strip().split("\n- ")
-                                if techniques_match else []
-                            )
-                            next_steps = (
-                                next_steps_match.group(1).strip().split("\n- ")
-                                if next_steps_match else []
-                            )
+                    #         techniques = (
+                    #             techniques_match.group(1).strip().split("\n- ")
+                    #             if techniques_match else []
+                    #         )
+                    #         next_steps = (
+                    #             next_steps_match.group(1).strip().split("\n- ")
+                    #             if next_steps_match else []
+                    #         )
 
-                    except Exception as e:
-                        print("Error parsing llm_text:", e)
+                    # except Exception as e:
+                    #     print("Error parsing llm_text:", e)
 
                     # print("techniques:   ", techniques)
                     # print("next steps:   ", next_steps)
@@ -625,8 +629,8 @@ def getUserGazeData(request):
                         "test_date": prediction.test_date,
                         "llm_response_id": response.id,
                         "response_llm": llm_text,
-                        "techniques": techniques,  # Parsed techniques
-                        "next_steps": next_steps,  # Parsed next steps
+                        # "techniques": techniques,  # Parsed techniques
+                        # "next_steps": next_steps,  # Parsed next steps
                         "llm_created_at": response.created_at,
                     })
 
